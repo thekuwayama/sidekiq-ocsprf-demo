@@ -7,7 +7,7 @@ gem 'openssl'
 gem 'rake'
 gem 'sidekiq'
 
-group :test do
+group :development, :test do
   gem 'pry'
   gem 'pry-byebug'
   gem 'rspec', '3.9.0'

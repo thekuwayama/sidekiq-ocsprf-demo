@@ -33,7 +33,7 @@ class FetchWorker
       return
     end
 
-    FetchWorker.write_der(ocsp_response.to_der)
+    FetchWorker.write_cache(ocsp_response.to_der)
 
     # re-schedule: next update
     cid = OpenSSL::OCSP::CertificateId.new(subject_cert, issuer_cert)
@@ -43,6 +43,7 @@ class FetchWorker
   end
 
   class << self
+    # @return [Array of OpenSSL::X509::Certificate]
     def read_certs
       subject_cert = OpenSSL::X509::Certificate.new(
         File.read(ENV['OCSPRF_SUBJECT_CERT_PATH'])
@@ -54,13 +55,19 @@ class FetchWorker
       [subject_cert, issuer_cert]
     end
 
-    def write_der(der)
+    # @param der [String]
+    def write_cache(der)
       File.binwrite(
-        ENV['OCSPRF_CACHE_FILE_PATH'] || '/tmp/ocsp_response.der',
+        ENV.fetch('OCSPRF_CACHE_FILE_PATH', '/tmp/ocsp_response.der'),
         der
       )
     end
 
+    # @param ocsp_response [OpenSSL::OCSP::Response]
+    # @param cid [OpenSSL::OCSP::CertificateId]
+    # @param now [Time]
+    #
+    # @return [Float] How many seconds later OCSP Response next update is?
     def sub_next_update(ocsp_response, cid, now = Time.now)
       next_update = ocsp_response.basic.find_response(cid).next_update
       next_update - now
