@@ -17,8 +17,11 @@ class FetchWorker
   include Sidekiq::Worker
   sidekiq_options retry: false
 
-  def perform
-    subject_cert, issuer_cert = FetchWorker.read_certs
+  # @param subject [String] path to the subject certificate
+  # @param issuer [String] path to the issuer certificate
+  # @param key [String]
+  def perform(subject, issuer, key = 'sidekiq-ocsprf-demo')
+    subject_cert, issuer_cert = FetchWorker.read_certs(subject, issuer)
     fetcher = OCSPResponseFetch::Fetcher.new(subject_cert, issuer_cert)
 
     ocsp_response = nil
@@ -26,43 +29,40 @@ class FetchWorker
       ocsp_response = fetcher.run
     rescue OCSPResponseFetch::Error::RevokedError
       # TODO: alert
-      FetchWorker.perform_in(1.hours)
+      FetchWorker.perform_in(1.hours, subject, issuer, key)
       return
     rescue OCSPResponseFetch::Error::Error
       # re-schedule: retry
-      FetchWorker.perform_in(1.hours)
+      FetchWorker.perform_in(1.hours, subject, issuer, key)
       return
     end
 
-    FetchWorker.write_cache(ocsp_response.to_der)
+    FetchWorker.write_cache(key, ocsp_response)
 
     # re-schedule: next update
     cid = OpenSSL::OCSP::CertificateId.new(subject_cert, issuer_cert)
     next_schedule = FetchWorker.sub_next_update(ocsp_response, cid)
     next_schedule = 7.days if next_schedule.negative?
-    FetchWorker.perform_in(next_schedule)
+    FetchWorker.perform_in(next_schedule, subject, issuer, key)
   end
 
   class << self
+    # @param subject [String] path to the subject certificate
+    # @param issuer [String] path to the issuer certificate
+    #
     # @return [Array of OpenSSL::X509::Certificate]
-    def read_certs
-      subject_cert = OpenSSL::X509::Certificate.new(
-        File.read(ENV['OCSPRF_SUBJECT_CERT_PATH'])
-      )
-      issuer_cert = OpenSSL::X509::Certificate.new(
-        File.read(ENV['OCSPRF_ISSUER_CERT_PATH'])
-      )
+    def read_certs(subject, issuer)
+      subject_cert = OpenSSL::X509::Certificate.new(File.read(subject))
+      issuer_cert = OpenSSL::X509::Certificate.new(File.read(issuer))
 
       [subject_cert, issuer_cert]
     end
 
-    # @param der [String]
-    def write_cache(der)
+    # @param key [String]
+    # @param ocsp_response [OpenSSL::OCSP::Response]
+    def write_cache(key, ocsp_response)
       redis = Redis.new(host: 'localhost', port: 6379)
-      redis.set(
-        ENV.fetch('OCSPRF_CACHE_REDIS_KEY', 'sidekiq-ocsprf-demo'),
-        der
-      )
+      redis.set(key, ocsp_response.to_der)
     end
 
     # @param ocsp_response [OpenSSL::OCSP::Response]
@@ -76,6 +76,3 @@ class FetchWorker
     end
   end
 end
-
-# init schedule
-FetchWorker.perform_async

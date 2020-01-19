@@ -7,11 +7,9 @@ $ bundle install
 
 $ redis-server &
 
-$ export OCSPRF_SUBJECT_CERT_PATH=/path/to/subject/certificate
+$ bundle exec sidekiq -r ./worker.rb &
 
-$ export OCSPRF_ISSUER_CERT_PATH=/path/to/issuer/certificate
-
-$ bundle exec sidekiq -r ./worker.rb
+$ bundle exec init.rb /path/to/subject/certificate /path/to/issuer/certificate
 ```
 
 And, you can get a DER-encoded OCSP Response corresponding to the subject certificate.
