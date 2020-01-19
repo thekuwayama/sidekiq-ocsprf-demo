@@ -2,6 +2,7 @@
 
 require 'ocsp_response_fetch'
 require 'openssl'
+require 'redis'
 require 'sidekiq'
 
 Sidekiq.configure_client do |config|
@@ -57,8 +58,9 @@ class FetchWorker
 
     # @param der [String]
     def write_cache(der)
-      File.binwrite(
-        ENV.fetch('OCSPRF_CACHE_FILE_PATH', '/tmp/ocsp_response.der'),
+      redis = Redis.new(host: 'localhost', port: 6379)
+      redis.set(
+        ENV.fetch('OCSPRF_CACHE_REDIS_KEY', 'sidekiq-ocsprf-demo'),
         der
       )
     end

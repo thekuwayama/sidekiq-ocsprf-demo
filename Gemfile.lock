@@ -65,6 +65,7 @@ DEPENDENCIES
   pry
   pry-byebug
   rake
+  redis
   rspec (= 3.9.0)
   rubocop (= 0.78.0)
   sidekiq

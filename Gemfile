@@ -5,6 +5,7 @@ source 'https://rubygems.org'
 gem 'ocsprf'
 gem 'openssl'
 gem 'rake'
+gem 'redis'
 gem 'sidekiq'
 
 group :development, :test do
