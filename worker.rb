@@ -20,7 +20,8 @@ class FetchWorker
   # @param subject [String] path to the subject certificate
   # @param issuer [String] path to the issuer certificate
   # @param key [String]
-  def perform(subject, issuer, key = 'sidekiq-ocsprf-demo')
+  # @param re [Integer]
+  def perform(subject, issuer, key: 'sidekiq-ocsprf-demo', re: 5)
     subject_cert, issuer_cert = FetchWorker.read_certs(subject, issuer)
     fetcher = OCSPResponseFetch::Fetcher.new(subject_cert, issuer_cert)
 
@@ -29,11 +30,11 @@ class FetchWorker
       ocsp_response = fetcher.run
     rescue OCSPResponseFetch::Error::RevokedError
       # TODO: alert
-      FetchWorker.perform_in(1.hours, subject, issuer, key)
       return
     rescue OCSPResponseFetch::Error::Error
       # re-schedule: retry
-      FetchWorker.perform_in(1.hours, subject, issuer, key)
+      FetchWorker.perform_in(1.hours, subject, issuer, key: key, re: re - 1) \
+        if re >= 0
       return
     end
 
@@ -43,7 +44,7 @@ class FetchWorker
     cid = OpenSSL::OCSP::CertificateId.new(subject_cert, issuer_cert)
     next_schedule = FetchWorker.sub_next_update(ocsp_response, cid)
     next_schedule = 7.days if next_schedule.negative?
-    FetchWorker.perform_in(next_schedule, subject, issuer, key)
+    FetchWorker.perform_in(next_schedule, subject, issuer, key: key)
   end
 
   class << self
